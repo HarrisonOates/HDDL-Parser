@@ -14,10 +14,24 @@ pub enum Commands {
     Convert(ConvertArgs),
     /// Semantically verify a program
     Verify(InputArgs),
+    /// Validate a source-level sequential PANDA certificate against its HDDL model
+    ValidatePlan(ValidatePlanArgs),
     /// Show metadata about a domain
     Metadata(InputArgs),
     /// Rewrite the input files in place, pretty-printed (HDDL only)
     Format(InputArgs),
+}
+
+#[derive(Parser)]
+pub struct ValidatePlanArgs {
+    #[command(flatten)]
+    pub input: InputArgs,
+    /// IPC 2020/2023 certificate after pandaPIparser -c (not grounded engine output)
+    #[arg(long)]
+    pub plan: String,
+    /// Bound parameter reconstruction and validation work; exhaustion is inconclusive
+    #[arg(long, default_value_t = 1_000_000)]
+    pub max_work: usize,
 }
 
 #[derive(Parser)]

@@ -1,5 +1,6 @@
 mod lexical_analyzer;
 mod output;
+pub mod plan;
 mod semantic_analyzer;
 mod syntactic_analyzer;
 mod transpiler;

@@ -1,5 +1,6 @@
 use clap::Parser;
-use hddl_analyzer::{Input, ParsingError, Transpiler};
+use hddl_analyzer::plan::{Validation, ValidationError, validate_panda_plan};
+use hddl_analyzer::{HDDLProgram, Input, ParsingError, Transpiler};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -8,7 +9,7 @@ use std::{
 
 mod cli_args;
 
-use cli_args::{CLIArgs, Commands, ConvertArgs, InputArgs, OutputFormat};
+use cli_args::{CLIArgs, Commands, ConvertArgs, InputArgs, OutputFormat, ValidatePlanArgs};
 
 // ANSI escape color codes
 const YELLOW: &str = "\x1b[33m";
@@ -74,8 +75,67 @@ pub fn main() -> ExitCode {
     match args.command {
         Commands::Convert(args) => convert(args),
         Commands::Verify(input) => verify(input),
+        Commands::ValidatePlan(args) => validate_plan(args),
         Commands::Metadata(input) => metadata(input),
         Commands::Format(input) => format_files(input),
+    }
+}
+
+fn validate_plan(args: ValidatePlanArgs) -> ExitCode {
+    let mut data = match InputData::read(&args.input) {
+        Ok(data) => data,
+        Err(error) => return error_exit(error),
+    };
+    if let InputData::Hddl { domain, problem } = &mut data {
+        domain.make_ascii_lowercase();
+        if let Some(problem) = problem {
+            problem.make_ascii_lowercase();
+        }
+    }
+    let program = match &data {
+        InputData::Json(json) => HDDLProgram::from_json(json),
+        InputData::Hddl { domain, problem } => HDDLProgram::from_hddl(domain, problem.as_ref()),
+    };
+    let program = match program {
+        Ok(program) => program,
+        Err(error) => return error_exit(error),
+    };
+    let plan = match fs::read_to_string(&args.plan) {
+        Ok(plan) => plan,
+        Err(error) => return error_exit(error),
+    };
+    match validate_panda_plan(&program, &plan, args.max_work) {
+        Ok(Validation::Valid {
+            actions,
+            cost,
+            makespan,
+            explored,
+        }) => {
+            println!(
+                "{}",
+                serde_json::json!({"status": "valid", "actions": actions, "cost": cost, "makespan": makespan, "work": explored})
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(Validation::UnsolvabilityReport) => {
+            println!(
+                "{}",
+                serde_json::json!({"status": "unverified_unsolvability_report"})
+            );
+            ExitCode::from(2)
+        }
+        Err(error) => {
+            let (status, code) = match error {
+                ValidationError::Invalid(_) => ("invalid", 1),
+                ValidationError::Unsupported(_) => ("unsupported", 2),
+                ValidationError::LimitExceeded => ("inconclusive", 2),
+            };
+            println!(
+                "{}",
+                serde_json::json!({"status": status, "error": error.to_string()})
+            );
+            ExitCode::from(code)
+        }
     }
 }
 

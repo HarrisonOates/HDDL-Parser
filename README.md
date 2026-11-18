@@ -31,6 +31,54 @@ With ```hddl_analyzer.exe```, you can execute the following commands. Every comm
 ## Language Server
 Executing ```language_server.exe```, activates the language server on the current terminal. At the moment, we only support communication via the standard IO, specified by the Language Server Protocol (LSP).
 
+## Sequential plan validation
+
+`validate-plan` checks a source-level IPC 2020/2023 PANDA hierarchical certificate
+against the original domain and problem. Convert grounded engine output with
+`pandaPIparser -c` first:
+
+```sh
+pandaPIparser -c plan.raw plan.converted
+target/release/hddl_analyzer validate-plan domain.hddl -p problem.hddl \
+  --plan plan.converted --max-work 1000000
+```
+
+The command reconstructs the root and method parameter bindings omitted by that
+format, checks the decomposition and inherited ordering, and replays the action
+sequence. It supports typed objects and constants, equality, negative/disjunctive/
+quantified conditions, propositional conditional/universal effects, method
+preconditions, empty decompositions and goals. Method guards are effectless events
+that may occur in any permitted state before their subtasks, following HDDL's
+semantics. Conditional effects read the state before the action; adds prevail over
+deletes. Input task networks may be partially ordered, but the submitted plan must
+be a single sequence.
+
+The validation command enforces the action-cost fragment in the
+[18 November 2026 IPC 2027 language specification](https://ipc2027-htn.gitlab.io/files/HTN-IPC-2027-language-spec-1.0.pdf).
+There may be at most one top-level cost increase per action; numeric effects inside
+`when` or `forall` are rejected. Used static cost terms must be initialized.
+Uninitialized terms for unused ground actions are allowed. Uncharged actions cost
+zero with the total-cost metric, and actions cost one without it. Reported costs
+use the parser's floating-point numeric representation; this is validation of
+feasibility, not an optimality proof. Existing `verify`/`convert` commands continue
+to accept their broader PDDL fragment.
+
+The command prints a JSON result and exits with `0` only for a valid certificate,
+`1` for invalid input, or `2` for unsupported input or a work limit. The work limit
+covers parameter reconstruction and replay, including quantified instantiation;
+it is not a wall-time or memory limit. Guard-only method parameters are searched
+under the same budget. Source subtask lists in the PANDA certificate must retain
+their declaration order. Decomposition depth above 512 is unsupported. An
+unsolvability report is not a solution certificate and cannot produce a valid
+result. The proposed HDDL 1.1 output syntax and partial-order plan validation are
+not implemented by this command.
+
+Library users can call `plan::validate_panda_plan` with a parsed `HDDLProgram`, or
+`plan::validate_plan` with an explicit in-memory certificate (including parameter
+bindings). Library inputs should use consistent lowercase names; the CLI
+normalizes HDDL files and PANDA certificates. The certificate data structures do
+not prescribe a new on-disk output format.
+
 # Correctness
 This tool is validated against all 33 hierarchical domains in IPC 2023 (<a href="https://github.com/ipc2023-htn/ipc2023-domains">link</a>), and the Sleath-Bercher benchmark (<a href="https://github.com/ProfDrChaos/flawedPlanningModels/tree/main/HDDL">link</a>).
 
